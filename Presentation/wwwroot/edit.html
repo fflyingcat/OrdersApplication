@@ -1,0 +1,297 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Edit Orders</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha2/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href=" https://cdn.jsdelivr.net/npm/bootstrap-toaster/css/bootstrap-toaster.min.css " rel="stylesheet">
+</head>
+<body class="container">
+    <h1>
+        <a href="main.html">Orders</a>
+    </h1>
+    <form class="row mb-4" id="form">
+        <div class="col-3">
+            <label for="order-id">Order Id:</label>
+            <input class="form-control" id="order-id" name="id" disabled>
+        </div>
+        <div class="col-3">
+            <label for="order-number">Order Number:</label>
+            <input class="form-control" name="number" id="order-number">
+        </div>
+        <div class="col-3">
+            <label for="order-date">Order Date:</label>
+            <input type="datetime-local" class="form-control" name="date" id="order-date">
+        </div>
+        <div class="col-3">
+            <label for="order-provider">Order Provider:</label>
+            <select class="form-select" name="providerId" id="order-provider"></select>
+        </div>
+    </form>
+    <button class="btn btn-success" onclick="saveChanges()">Save</button>
+    <button class="btn btn-primary" onclick="addRow()">Add row</button>
+    <table id="items-table" class="table table-striped">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>OrderId</th>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <div class="toast-container position-fixed m-3 bottom-0 end-0" aria-live="polite"></div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src=" https://cdn.jsdelivr.net/npm/bootstrap-toaster/js/bootstrap-toaster.min.js "></script>
+    <script>
+        async function fillProviders() {
+            providers = await fetch('/api/Provider').then((response) => response.json())
+                .then((data) => data);
+
+            let providersSelect = document.getElementById('order-provider');
+            providers.forEach((provider) => {
+                let selectOption = document.createElement('option');
+                selectOption.value = provider.id;
+                selectOption.text = provider.name;
+
+                providersSelect.add(selectOption);
+            });
+        }
+
+        async function fillOrderData() {
+            const order = await fetch(`/api/Order/${orderId}`).then((response) => {
+                if (response.status === 404) {
+                    window.location.href = '/page404.html';
+                }
+                return response.json();
+            }).then((data) => data);
+
+            document.getElementById('order-id').value = order.id;
+            document.getElementById('order-number').value = order.number;
+            document.getElementById('order-date').value = order.date;
+            document.getElementById('order-provider').value = order.providerId;
+        }
+
+        async function fillItemsTable() {
+            const items = await fetch(`/api/OrderItem/${params}`).then((response) => response.json())
+                .then((data) => data);
+
+            items.forEach((item) => {
+                let tbody = document.getElementById('items-table').getElementsByTagName('tbody')[0];
+                let newRow = tbody.insertRow();
+
+                Object.keys(item).forEach((field) => {
+                    let newCell = newRow.insertCell();
+
+                    let value;
+                    let disabled = false;
+
+                    switch (field) {
+                        case "id":
+                            value = item.id;
+                            disabled = true;
+                            break;
+                        case "orderId":
+                            value = item.orderId;
+                            disabled = true;
+                            break;
+                        case "name":
+                            value = item.name;
+                            break;
+                        case "quantity":
+                            value = item.quantity;
+                            break;
+                        case "unit":
+                            value = item.unit;
+                            break;
+                    }
+
+                    let newInput = document.createElement('input');
+                    newInput.classList.add('form-control');
+                    newInput.value = value;
+                    newInput.disabled = disabled;
+
+                    newCell.appendChild(newInput);
+                });
+
+                let buttonCell = newRow.insertCell();
+                let button = document.createElement('button');
+                button.classList.add('btn');
+                button.classList.add('btn-danger');
+                button.innerText = "Delete";
+                button.value = item.id;
+                button.onclick = ((event) => deleteRow(event.target));
+
+                buttonCell.appendChild(button);
+            });
+        }
+
+        function addRow() {
+            let tbody = document.getElementById('items-table').getElementsByTagName('tbody')[0];
+            let newRow = tbody.insertRow();
+            for (let i = 0; i < 5; i++) {
+                let newCell = newRow.insertCell();
+
+                let newInput = document.createElement('input');
+                newInput.classList.add('form-control');
+                newInput.disabled = i === 0 || i === 1;
+                newInput.value = i === 1 ? orderId : '';
+
+                newCell.appendChild(newInput);
+            }
+            let buttonCell = newRow.insertCell();
+            let button = document.createElement('button');
+            button.classList.add('btn');
+            button.classList.add('btn-danger');
+            button.innerText = "Delete";
+            button.onclick = ((event) => deleteRow(event.target));
+
+            buttonCell.appendChild(button);
+        }
+
+        async function deleteRow(target) {
+            let row = target.parentElement.parentElement;
+
+            if (target.value !== "") {
+                await fetch(`/api/OrderItem/${target.value}`,
+                    {
+                        method: 'delete'
+                    });
+            }
+
+            row.remove();
+        }
+
+        async function saveChanges() {
+            let order;
+            let orderData = {
+                number: document.getElementById('order-number').value,
+                date: document.getElementById('order-date').value,
+                providerId: document.getElementById('order-provider').value
+            }
+            if (orderId !== null && orderId !== "") {
+                const response = await fetch(`/api/Order/${orderId}`,
+                    {
+                        method: 'put',
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(orderData)
+                    });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    order = null;
+
+                    for (let error in result.errors) {
+                        showToast(result.errors[error]);
+                    }
+                } else {
+                    order = result;
+                }
+            } else {
+                const response = await fetch('/api/Order/',
+                    {
+                        method: 'post',
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(orderData)
+                    });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    order = null;
+
+                    for (let error in result.errors) {
+                        showToast(result.errors[error]);
+                    }
+                } else {
+                    order = result;
+                    document.getElementById('order-id').value = order.id;
+                }
+            }
+
+            if (order !== null) {
+                let rows = document.querySelectorAll('#items-table>tbody>tr');
+
+                rows.forEach(async (row) => {
+                    let itemId = row.cells[0].firstChild.value === '' ? null : row.cells[0].firstChild.value
+
+                    row.cells[1].firstChild.value = order.id;
+
+                    let itemData = {
+                        orderId: row.cells[1].firstChild.value,
+                        name: row.cells[2].firstChild.value,
+                        quantity: row.cells[3].firstChild.value,
+                        unit: row.cells[4].firstChild.value
+                    }
+
+                    if (itemId !== null) {
+                        const response = await fetch(`/api/OrderItem/${itemId}`,
+                            {
+                                method: 'put',
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(itemData)
+                            });
+
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                            order = null;
+
+                            for (let error in result.errors) {
+                                showToast(result.errors[error]);
+                            }
+                        }
+                    } else {
+                        const response = await fetch('/api/OrderItem/',
+                            {
+                                method: 'post',
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(itemData)
+                            });
+
+                        const result = await response.json();
+
+                        if (!response.ok) {
+                            order = null;
+
+                            for (let error in result.errors) {
+                                showToast(result.errors[error]);
+                            }
+                        } else {
+                            row.cells[0].firstChild.value = result.id;
+                        }
+                    }
+                });
+            }
+        }
+
+        function showToast(message) {
+            Toast.setPlacement(TOAST_PLACEMENT.BOTTOM_RIGHT);
+            Toast.enableTimers(TOAST_TIMERS.DISABLED);
+            let toast = {
+                title: "ERROR!",
+                message: message,
+                status: TOAST_STATUS.DANGER,
+                timeout: 5000
+            }
+            Toast.create(toast);
+        };
+
+        let params = document.location.search;
+        let parsedParams = new URLSearchParams(params);
+
+        let providers;
+        fillProviders();
+
+        let orderId = parsedParams.get('orderId');
+        if (orderId !== null && orderId !== "") {
+            fillOrderData();
+            fillItemsTable();
+        }
+    </script>
+</body>
+</html>
